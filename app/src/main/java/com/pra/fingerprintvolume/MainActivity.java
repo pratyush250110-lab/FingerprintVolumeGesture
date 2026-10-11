@@ -10,9 +10,12 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.content.SharedPreferences;
 
 public class MainActivity extends Activity {
+    private static final String PREFS = "fingerprint_gesture_status";
     private TextView status;
+    private TextView fingerprintStatus;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -31,15 +34,31 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView intro = new TextView(this);
-        intro.setText("\nGalaxy M33 5G • prototype\n\nSwipe up in the right-edge strip = volume up. Swipe down = volume down.\n\nImportant: Android only exposes fingerprint swipes on devices whose sensor and firmware support them. If your M33 does not provide those callbacks, use the screen-edge strip; this app cannot guarantee fingerprint-button gestures.");
+        intro.setText("\nGalaxy M33 5G • One UI diagnostic build\n\nTarget: swipe UP on the side fingerprint sensor = volume up; swipe DOWN = volume down. Android exposes this only when the phone's firmware sends sensor gestures to third-party accessibility services. Samsung's native notification-panel gesture alone does not guarantee third-party access.");
         intro.setTextColor(Color.rgb(210, 218, 235));
-        intro.setTextSize(16);
+        intro.setTextSize(15);
         root.addView(intro);
 
         status = new TextView(this);
         status.setTextColor(Color.rgb(151, 225, 177));
         status.setTextSize(14);
         root.addView(status);
+
+        TextView diagnosticTitle = new TextView(this);
+        diagnosticTitle.setText("\nFingerprint sensor diagnosis");
+        diagnosticTitle.setTextColor(Color.WHITE);
+        diagnosticTitle.setTextSize(18);
+        diagnosticTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        root.addView(diagnosticTitle);
+
+        fingerprintStatus = new TextView(this);
+        fingerprintStatus.setTextColor(Color.rgb(255, 209, 130));
+        fingerprintStatus.setTextSize(14);
+        root.addView(fingerprintStatus);
+
+        Button refresh = button("Refresh fingerprint diagnosis");
+        refresh.setOnClickListener(v -> refreshStatus());
+        root.addView(refresh);
 
         Button accessibility = button("1. Open Accessibility Settings");
         accessibility.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
@@ -64,7 +83,7 @@ public class MainActivity extends Activity {
                 return;
             }
             startService(new Intent(this, EdgeGestureService.class).setAction(EdgeGestureService.ACTION_START));
-            status.setText("Requested start. A slim strip should appear at the right edge.");
+            status.setText("Requested start. Swipe on the right-edge strip to test the fallback.");
         });
         root.addView(start);
 
@@ -76,7 +95,7 @@ public class MainActivity extends Activity {
         root.addView(stop);
 
         TextView footer = new TextView(this);
-        footer.setText("\nNo internet permission. No analytics. Source code is available in the GitHub project.");
+        footer.setText("\nTip: if your Settings app has Advanced features → Motions and gestures → Finger sensor gestures, enable it to test Samsung's built-in sensor gesture. This app still depends on Android delivering callbacks to third-party services.\n\nNo internet permission, analytics or data collection.");
         footer.setTextColor(Color.rgb(155, 164, 184));
         footer.setTextSize(13);
         root.addView(footer);
@@ -87,10 +106,26 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (status != null) {
-            status.setText(EdgeGestureService.isEnabled(this)
-                    ? "Accessibility service: enabled"
-                    : "Accessibility service: not enabled yet");
+        refreshStatus();
+    }
+
+    private void refreshStatus() {
+        if (status == null || fingerprintStatus == null) return;
+        boolean enabled = EdgeGestureService.isEnabled(this);
+        status.setText(enabled
+                ? "Accessibility service: enabled (confirm it stays on in Settings)."
+                : "Accessibility service: not enabled yet.");
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String saved = prefs.getString("status", null);
+        boolean connected = prefs.getBoolean("service_connected", false);
+        if (!enabled) {
+            fingerprintStatus.setText("Enable the service first, then return here. The diagnosis will appear after Android connects the service.");
+        } else if (saved == null) {
+            fingerprintStatus.setText(connected
+                    ? "Service connected, but no fingerprint status was recorded yet. Tap refresh again."
+                    : "Waiting for Android to connect the accessibility service. Re-open this screen after enabling it.");
+        } else {
+            fingerprintStatus.setText(saved);
         }
     }
 
