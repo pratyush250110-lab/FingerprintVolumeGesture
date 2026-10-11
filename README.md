@@ -1,40 +1,28 @@
-# Fingerprint Volume Gesture (Samsung Galaxy M33 5G)
+# Fingerprint Volume Gesture — Galaxy M33 / One UI
 
-A small Android app that maps:
-- Swipe **up** on the screen-edge gesture strip → volume up
-- Swipe **down** on the screen-edge gesture strip → volume down
+This Android app maps:
+- Side fingerprint sensor swipe **up** → media volume up
+- Side fingerprint sensor swipe **down** → media volume down
+- Screen-edge strip swipe up/down → fallback volume controls
 
-## Important hardware limitation
+## Important device limitation
 
-Android has a public `FingerprintGestureController` API for accessibility services, but it only works on devices whose fingerprint sensor and firmware explicitly support swipe gestures. The project registers for that API first: swipe up → volume up, swipe down → volume down. The Galaxy M33 5G's side-mounted fingerprint reader may not expose gesture support, and this cannot be guaranteed from the model name alone. If the sensor never sends callbacks, use the included screen-edge strip fallback (swipe up/down on the strip).
+The code uses Android's public `FingerprintGestureController` accessibility API. It requires a device whose fingerprint sensor **and firmware expose swipe events to third-party accessibility services**. Samsung's built-in **Finger sensor gestures** option can open/close the notification panel on supported Galaxy devices, but that does not prove third-party apps receive those same callbacks.
 
-## Build the APK
+This build explicitly requests `FLAG_REQUEST_FINGERPRINT_GESTURES` both in the service XML and at runtime, and declares both `USE_FINGERPRINT` and `USE_BIOMETRIC`. The app now displays the framework's availability response and any actual swipe callback in the app's diagnostic area. If Android says gestures are unavailable or never reports a swipe, One UI's firmware may not expose the sensor events to third-party apps; ordinary app code cannot reliably override that firmware limitation.
 
-1. Install Android Studio (or use a compatible Gradle/Android SDK environment).
-2. Open this folder as an existing project.
-3. Let Gradle sync.
-4. Choose **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
-5. The debug APK is normally at `app/build/outputs/apk/debug/app-debug.apk`.
+## Install and test
 
-Recommended: use JDK 17 and Android SDK Platform 35. The project uses Android Gradle Plugin 8.7.3 and Gradle 8.9.
+1. Install the debug APK.
+2. Open the app and enable its Accessibility service in Settings.
+3. Return to the app and wait a few seconds.
+4. Read **Fingerprint sensor diagnosis** and tap **Refresh fingerprint diagnosis**.
+5. If available, swipe up/down on the side fingerprint sensor and check whether the status changes to a received gesture.
+6. If your phone provides **Settings → Advanced features → Motions and gestures → Finger sensor gestures**, you can enable it to check Samsung's built-in function. This setting is separate from third-party callback support.
+7. For fallback testing, grant **Appear on top** and tap **Start edge gesture strip**. Swipe on the visible strip.
 
-## Install and enable
+The app has no internet permission, analytics, ads, or data collection. The accessibility service does not retrieve window content.
 
-1. Install the APK on your phone.
-2. Open **Fingerprint Volume Gesture**.
-3. Tap **Open Accessibility Settings**.
-4. Enable **Fingerprint Volume Gesture** under installed/downloaded apps. Android will show a system warning because accessibility services can observe screen interactions; enable it only if you trust the app/source.
-5. Return to the app and tap **Start edge gesture strip**.
-6. A narrow translucent strip appears at the right edge. Swipe up/down within that strip to change media volume.
-7. Tap **Stop edge gesture strip** to remove it.
+## Build
 
-## Privacy
-
-- No internet permission.
-- No analytics, ads, account, or data collection.
-- Accessibility is used only for the edge overlay/gesture fallback.
-- Source is included so you can inspect it before building.
-
-## GitHub
-
-Upload the contents of this folder to a repository. Do not commit signing keys or passwords. GitHub Actions workflow is included to build a debug APK and attach it to workflow artifacts.
+The included GitHub Actions workflow builds a debug APK using JDK 17 and Gradle 8.9. In GitHub, open **Actions → Build debug APK**, select the latest successful run, then download the `FingerprintVolumeGesture-debug-apk` artifact.
