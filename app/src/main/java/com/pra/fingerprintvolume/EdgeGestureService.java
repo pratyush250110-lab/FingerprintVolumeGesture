@@ -1,15 +1,18 @@
 package com.pra.fingerprintvolume;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.accessibilityservice.FingerprintGestureController;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
 import android.os.Build;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -20,6 +23,8 @@ import android.widget.TextView;
 public class EdgeGestureService extends AccessibilityService {
     public static final String ACTION_START = "com.pra.fingerprintvolume.START";
     public static final String ACTION_STOP = "com.pra.fingerprintvolume.STOP";
+    private static final String TAG = "FingerprintVolume";
+    private static final String PREFS = "fingerprint_gesture_status";
 
     private WindowManager windowManager;
     private View strip;
@@ -40,10 +45,34 @@ public class EdgeGestureService extends AccessibilityService {
         return false;
     }
 
+    private void saveFingerprintStatus(String status) {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString("status", status)
+                .putLong("updated_at", System.currentTimeMillis())
+                .apply();
+        Log.i(TAG, status);
+    }
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean("service_connected", true).apply();
+
+        // Explicitly request fingerprint gesture events at runtime as well as in XML.
+        // This helps diagnose OEMs that do not apply the XML flag consistently.
+        try {
+            AccessibilityServiceInfo serviceInfo = getServiceInfo();
+            if (serviceInfo != null) {
+                serviceInfo.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FINGERPRINT_GESTURES;
+                setServiceInfo(serviceInfo);
+            }
+        } catch (RuntimeException e) {
+            saveFingerprintStatus("Accessibility service connected, but requesting the fingerprint gesture flag failed: "
+                    + e.getClass().getSimpleName());
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 fingerprintController = getFingerprintGestureController();
@@ -51,19 +80,43 @@ public class EdgeGestureService extends AccessibilityService {
                     @Override
                     public void onGestureDetected(int gesture) {
                         if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_UP) {
+                            saveFingerprintStatus("Fingerprint swipe UP received by Android. Raising media volume.");
                             adjustVolume(AudioManager.ADJUST_RAISE);
                         } else if (gesture == FingerprintGestureController.FINGERPRINT_GESTURE_SWIPE_DOWN) {
+                            saveFingerprintStatus("Fingerprint swipe DOWN received by Android. Lowering media volume.");
                             adjustVolume(AudioManager.ADJUST_LOWER);
+                        } else {
+                            saveFingerprintStatus("Fingerprint gesture received (direction " + gesture
+                                    + "). Only up/down are mapped to volume.");
                         }
                     }
 
                     @Override
-                    public void onGestureDetectionAvailabilityChanged(boolean available) { }
+                    public void onGestureDetectionAvailabilityChanged(boolean available) {
+                        if (available) {
+                            saveFingerprintStatus("Android reports fingerprint gesture detection is AVAILABLE. Try swiping up/down on the side sensor.");
+                        } else {
+                            saveFingerprintStatus("Android reports fingerprint gesture detection is UNAVAILABLE. The sensor may be busy or One UI may not expose sensor swipes to third-party services.");
+                        }
+                    }
                 };
                 fingerprintController.registerFingerprintGestureCallback(fingerprintCallback, null);
-            } catch (RuntimeException ignored) {
+
+                boolean available = fingerprintController.isGestureDetectionAvailable();
+                if (available) {
+                    saveFingerprintStatus("Listener registered; Android currently reports fingerprint gesture detection AVAILABLE. Try swiping on the side sensor.");
+                } else {
+                    saveFingerprintStatus("Listener registered, but Android reports fingerprint gesture detection UNAVAILABLE. Samsung's built-in sensor gesture can work even when third-party callbacks are not exposed.");
+                }
+            } catch (SecurityException e) {
                 fingerprintController = null;
+                saveFingerprintStatus("Fingerprint gesture access was denied by Android: " + e.getMessage());
+            } catch (RuntimeException e) {
+                fingerprintController = null;
+                saveFingerprintStatus("Fingerprint gesture API could not start: " + e.getClass().getSimpleName());
             }
+        } else {
+            saveFingerprintStatus("Fingerprint gestures require Android 8.0 or newer.");
         }
     }
 
@@ -83,6 +136,8 @@ public class EdgeGestureService extends AccessibilityService {
     @Override
     public void onDestroy() {
         removeStrip();
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean("service_connected", false).apply();
         if (fingerprintController != null && fingerprintCallback != null) {
             try {
                 fingerprintController.unregisterFingerprintGestureCallback(fingerprintCallback);
