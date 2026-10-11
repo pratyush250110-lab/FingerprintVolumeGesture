@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Fingerprint Volume Gesture</string>
+    <string name="accessibility_description">Shows a screen-edge swipe strip to change media volume. It cannot read fingerprint sensor swipes.</string>
+</resources>
